@@ -2,80 +2,81 @@ name: Build HYDRA AIM APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
-      - name: Baixar repositório
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Configurar Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Preparar Android SDK
-        run: |
-          echo "Android SDK: $ANDROID_HOME"
-          yes | sdkmanager --licenses || true
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Extrair projeto
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "platforms;android-36" \
+            "build-tools;35.0.0" \
+            "build-tools;36.0.0"
+
+      - name: Extract project
         run: |
           mkdir -p source
+          shopt -s nullglob
+          files=( *.zip )
 
-          ZIP_FILE=$(find . -maxdepth 2 -type f -name "*.zip" -print -quit)
-
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERRO: Nenhum arquivo ZIP encontrado."
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "Nenhum arquivo ZIP encontrado!"
             exit 1
           fi
 
-          unzip -q "$ZIP_FILE" -d source
+          unzip -q "${files[0]}" -d source
 
-      - name: Localizar projeto Android
+      - name: Locate Android project
         run: |
-          PROJECT_DIR=$(dirname "$(find source -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)")
+          PROJECT_FILE=$(find source -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -print -quit)
 
-          if [ -z "$PROJECT_DIR" ] || [ "$PROJECT_DIR" = "." ]; then
-            echo "ERRO: settings.gradle não encontrado."
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "Projeto Gradle não encontrado!"
             exit 1
           fi
 
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
-          echo "Projeto encontrado em: $PROJECT_DIR"
+          echo "PROJECT_DIR=$(dirname "$PROJECT_FILE")" >> "$GITHUB_ENV"
 
-      - name: Compilar APK
+      - name: Build HYDRA AIM
         run: |
           cd "$PROJECT_DIR"
 
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
+          if [ -f gradlew ]; then
+            chmod +x gradlew
             ./gradlew --no-daemon assembleDebug
           else
             gradle --no-daemon assembleDebug
           fi
 
-      - name: Verificar APK
-        run: |
-          APK=$(find "$PROJECT_DIR" -type f -name "*.apk" -print -quit)
-
-          if [ -z "$APK" ]; then
-            echo "ERRO: APK não foi gerado."
-            exit 1
-          fi
-
-          echo "APK gerado: $APK"
-
-      - name: Disponibilizar APK
+      - name: Upload HYDRA AIM APK
         uses: actions/upload-artifact@v4
         with:
           name: HYDRA-AIM-APK
-          path: ${{ env.PROJECT_DIR }}/**/build/outputs/apk/**/*.apk
+          path: source/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 7
