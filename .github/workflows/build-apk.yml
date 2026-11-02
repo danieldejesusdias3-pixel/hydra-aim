@@ -22,33 +22,54 @@ jobs:
           java-version: '17'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         with:
+          cmdline-tools-version: 15859902
+          accept-android-sdk-licenses: true
           packages: |
             platform-tools
             platforms;android-35
             build-tools;35.0.0
 
       - name: Extract project
+        shell: bash
         run: |
           mkdir -p source
-          unzip -q "*.zip" -d source
+
+          ZIP_FILE=$(find . -maxdepth 1 -type f -iname '*.zip' -print -quit)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: Nenhum arquivo ZIP encontrado!"
+            exit 1
+          fi
+
+          echo "Extraindo: $ZIP_FILE"
+          unzip -q "$ZIP_FILE" -d source
 
       - name: Find Android project
         id: project
+        shell: bash
         run: |
-          PROJECT_DIR=$(dirname "$(find source -name settings.gradle -o -name settings.gradle.kts | head -n 1)")
-          if [ -z "$PROJECT_DIR" ] || [ "$PROJECT_DIR" = "." ]; then
-            echo "Android project not found!"
+          SETTINGS_FILE=$(find source -type f \( \
+            -name settings.gradle \
+            -o -name settings.gradle.kts \
+          \) -print -quit)
+
+          if [ -z "$SETTINGS_FILE" ]; then
+            echo "ERROR: Projeto Android não encontrado!"
             exit 1
           fi
+
+          PROJECT_DIR=$(dirname "$SETTINGS_FILE")
+
+          echo "Projeto encontrado em: $PROJECT_DIR"
           echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Build APK
         working-directory: ${{ steps.project.outputs.dir }}
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
+          ./gradlew --no-daemon --stacktrace assembleDebug
 
       - name: Upload HYDRA AIM APK
         uses: actions/upload-artifact@v4
