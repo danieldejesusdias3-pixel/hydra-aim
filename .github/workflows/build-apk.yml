@@ -26,10 +26,7 @@ jobs:
         with:
           cmdline-tools-version: 15859902
           accept-android-sdk-licenses: true
-          packages: |
-            platform-tools
-            platforms;android-35
-            build-tools;35.0.0
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
 
       - name: Extract project
         shell: bash
